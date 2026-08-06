@@ -81,7 +81,7 @@ namespace DynamicsAdapter.Web.PersonSearch
         {
             if (person == null) {
                 _logger.LogWarning("Received null Person object for SearchRequest[{SearchRequestId}]", searchRequest?.SearchRequestId);
-                return true; 
+                return true;
             }
 
             // STEP 1: Always process the person details
@@ -94,6 +94,8 @@ namespace DynamicsAdapter.Web.PersonSearch
                 MiddleName = person.MiddleName,
                 OtherName = null,
                 DateOfBirth = person.DateOfBirth,
+                DateOfDeath = person.DateOfDeath,
+                DateDeathConfirmed = person.DateDeathConfirmed,
                 Gender = person.Gender,
                 Addresses = person.Addresses,
                 Phones = person.Phones,
