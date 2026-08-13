@@ -3,6 +3,7 @@ using DynamicsAdapter.Web.Register;
 using DynamicsAdapter.Web.SearchAgency.Exceptions;
 using DynamicsAdapter.Web.SearchAgency.Models;
 using Fams3Adapter.Dynamics.SearchRequest;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ namespace DynamicsAdapter.Web.SearchAgency
 {
     [Route("[controller]")]
     [ApiController]
+    [Authorize]
     public class AgencyRequestController : ControllerBase
     {
         private readonly ILogger<AgencyRequestController> _logger;
