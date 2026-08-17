@@ -14,21 +14,21 @@ using System.Collections.Generic;
 namespace SearchApi.Web.Notifications
 {
 
-    public class WebHookNotifierSearchEventStatus :  ISearchApiNotifier<PersonSearchAdapterEvent>
+    public class WebHookNotifierSearchEventStatus : ISearchApiNotifier<PersonSearchAdapterEvent>
     {
 
         private readonly HttpClient _httpClient;
         private readonly SearchApiOptions _searchApiOptions;
         private readonly IDeepSearchService _deepSearchService;
         private readonly ILogger<WebHookNotifierSearchEventStatus> _logger;
-     
+
 
         public WebHookNotifierSearchEventStatus(HttpClient httpClient, IOptions<SearchApiOptions> searchApiOptions,
             ILogger<WebHookNotifierSearchEventStatus> logger, IDeepSearchService deepSearchService)
         {
             _httpClient = httpClient;
             _logger = logger;
-            _searchApiOptions = searchApiOptions.Value;     
+            _searchApiOptions = searchApiOptions.Value;
             _deepSearchService = deepSearchService;
             _httpClient.Timeout = TimeSpan.FromMinutes(_searchApiOptions.Timeout);
         }
@@ -88,7 +88,6 @@ namespace SearchApi.Web.Notifications
                         request.Method = HttpMethod.Post;
                         request.Headers.Accept.Add(
                             System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
-                        request.Headers.Add("X-ApiKey", _searchApiOptions.ApiKeyForDynadaptor);
                         request.RequestUri = endpoint;
                         var response = await _httpClient.SendAsync(request, cancellationToken);
 
@@ -137,7 +136,7 @@ namespace SearchApi.Web.Notifications
                 else if (eventName.Equals(EventName.Completed))
                 {
                     PersonSearchCompletedJCA completed = (PersonSearchCompletedJCA)eventStatus;
-                    if(completed.Message != null && completed.Message.Contains("All traces received."))
+                    if (completed.Message != null && completed.Message.Contains("All traces received."))
                     {
                         await _deepSearchService.UpdateDataPartner(searchRequestKey, eventStatus.ProviderProfile.Name, eventName);
                     }
@@ -153,15 +152,15 @@ namespace SearchApi.Web.Notifications
 
             await ProcessWaveSearch(searchRequestKey, eventName, eventStatus.ProviderProfile.Name);
 
-           
-               
+
+
         }
 
-        private async Task ProcessWaveSearch(string searchRequestKey, string eventName,string dataPartner )
+        private async Task ProcessWaveSearch(string searchRequestKey, string eventName, string dataPartner)
         {
             if (!EventName.Finalized.Equals(eventName))
             {
-                if (EventName.Completed.Equals(eventName)|| EventName.Rejected.Equals(eventName))
+                if (EventName.Completed.Equals(eventName) || EventName.Rejected.Equals(eventName))
                 {
                     if (await _deepSearchService.IsWaveSearchReadyToFinalize(searchRequestKey))
                     {
