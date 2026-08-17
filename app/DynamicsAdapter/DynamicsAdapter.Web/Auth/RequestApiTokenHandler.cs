@@ -1,15 +1,19 @@
+using IdentityModel.Client;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
-using IdentityModel.Client;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 
 namespace DynamicsAdapter.Web.Auth
 {
+    /// <summary>
+    /// HTTP message handler for outbound requests to request-api.
+    /// Toggles between JWT bearer token (when enabled) and X-ApiKey header (when disabled).
+    /// </summary>
     public class RequestApiTokenHandler : DelegatingHandler
     {
         private const string CacheKey = "request_api_access_token";
@@ -35,8 +39,27 @@ namespace DynamicsAdapter.Web.Auth
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            var token = await GetTokenAsync(cancellationToken);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var jwtEnabled = _configuration.GetValue<bool>("auth:requestApi:enabled", defaultValue: false);
+
+            if (jwtEnabled)
+            {
+                var token = await GetTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(token))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    _logger.LogDebug("Request sent with JWT bearer token");
+                }
+            }
+            else
+            {
+                var apiKey = _configuration["ApiKeyForRequestApi"];
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    request.Headers.Add("X-ApiKey", apiKey);
+                    _logger.LogDebug("Request sent with X-ApiKey header (JWT disabled)");
+                }
+            }
+
             return await base.SendAsync(request, cancellationToken);
         }
 
@@ -53,35 +76,41 @@ namespace DynamicsAdapter.Web.Auth
 
             if (string.IsNullOrWhiteSpace(tokenUrl) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
             {
-                throw new InvalidOperationException("Request API token configuration is incomplete. Set auth:requestApi:tokenUrl, auth:requestApi:clientId, and auth:requestApi:clientSecret.");
+                _logger.LogWarning("Request API token configuration incomplete. Proceeding without JWT token.");
+                return string.Empty;
             }
 
-            using var httpClient = _httpClientFactory.CreateClient("request_api_token");
-            var response = await httpClient.RequestClientCredentialsTokenAsync(
-                new ClientCredentialsTokenRequest
-                {
-                    Address = tokenUrl,
-                    ClientId = clientId,
-                    ClientSecret = clientSecret,
-                },
-                cancellationToken
-            );
-
-            if (response.IsError)
+            try
             {
-                _logger.LogError(
-                    "Request API token acquisition failed: {Error} - {Description}",
-                    response.Error,
-                    response.ErrorDescription);
+                using var httpClient = _httpClientFactory.CreateClient("request_api_token");
+                var response = await httpClient.RequestClientCredentialsTokenAsync(
+                    new ClientCredentialsTokenRequest
+                    {
+                        Address = tokenUrl,
+                        ClientId = clientId,
+                        ClientSecret = clientSecret,
+                    },
+                    cancellationToken);
 
-                throw new InvalidOperationException(
-                    $"Request API token acquisition failed: {response.Error} - {response.ErrorDescription}");
+                if (response.IsError)
+                {
+                    _logger.LogError(
+                        "Request API token acquisition failed: {Error} - {Description}",
+                        response.Error,
+                        response.ErrorDescription);
+                    return string.Empty;
+                }
+
+                var expiresIn = response.ExpiresIn > 60 ? response.ExpiresIn - 60 : response.ExpiresIn;
+                _cache.Set(CacheKey, response.AccessToken, TimeSpan.FromSeconds(expiresIn));
+
+                return response.AccessToken;
             }
-
-            var expiresIn = response.ExpiresIn > 60 ? response.ExpiresIn - 60 : response.ExpiresIn;
-            _cache.Set(CacheKey, response.AccessToken, TimeSpan.FromSeconds(expiresIn));
-
-            return response.AccessToken;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception during token acquisition for request-api");
+                return string.Empty;
+            }
         }
     }
 }

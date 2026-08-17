@@ -10,6 +10,10 @@ using System.Threading.Tasks;
 
 namespace SearchRequestAdaptor.Auth
 {
+    /// <summary>
+    /// HTTP message handler for outbound requests to dynadapter.
+    /// Toggles between JWT bearer token (when enabled) and X-ApiKey header (when disabled).
+    /// </summary>
     public class DynadapterTokenHandler : DelegatingHandler
     {
         private const string CacheKey = "dynadapter_access_token";
@@ -35,8 +39,27 @@ namespace SearchRequestAdaptor.Auth
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            var token = await GetTokenAsync(cancellationToken);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var jwtEnabled = _configuration.GetValue<bool>("auth:dynadapter:enabled", defaultValue: false);
+
+            if (jwtEnabled)
+            {
+                var token = await GetTokenAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(token))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                    _logger.LogDebug("Request sent with JWT bearer token");
+                }
+            }
+            else
+            {
+                var apiKey = _configuration["SearchRequestAdaptor:ApiKeyForDynadaptor"];
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    request.Headers.Add("X-ApiKey", apiKey);
+                    _logger.LogDebug("Request sent with X-ApiKey header (JWT disabled)");
+                }
+            }
+
             return await base.SendAsync(request, cancellationToken);
         }
 
@@ -53,35 +76,41 @@ namespace SearchRequestAdaptor.Auth
 
             if (string.IsNullOrWhiteSpace(tokenUrl) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
             {
-                throw new InvalidOperationException("Dynadapter token configuration is incomplete. Set auth:dynadapter:tokenUrl, auth:dynadapter:clientId, and auth:dynadapter:clientSecret.");
+                _logger.LogWarning("Dynadapter token configuration incomplete. Proceeding without JWT token.");
+                return string.Empty;
             }
 
-            using var httpClient = _httpClientFactory.CreateClient("dynadapter_token");
-            var response = await httpClient.RequestClientCredentialsTokenAsync(
-                new ClientCredentialsTokenRequest
-                {
-                    Address = tokenUrl,
-                    ClientId = clientId,
-                    ClientSecret = clientSecret,
-                },
-                cancellationToken
-            );
-
-            if (response.IsError)
+            try
             {
-                _logger.LogError(
-                    "Dynadapter token acquisition failed: {Error} - {Description}",
-                    response.Error,
-                    response.ErrorDescription);
+                using var httpClient = _httpClientFactory.CreateClient("dynadapter_token");
+                var response = await httpClient.RequestClientCredentialsTokenAsync(
+                    new ClientCredentialsTokenRequest
+                    {
+                        Address = tokenUrl,
+                        ClientId = clientId,
+                        ClientSecret = clientSecret,
+                    },
+                    cancellationToken);
 
-                throw new InvalidOperationException(
-                    $"Dynadapter token acquisition failed: {response.Error} - {response.ErrorDescription}");
+                if (response.IsError)
+                {
+                    _logger.LogError(
+                        "Dynadapter token acquisition failed: {Error} - {Description}",
+                        response.Error,
+                        response.ErrorDescription);
+                    return string.Empty;
+                }
+
+                var expiresIn = response.ExpiresIn > 60 ? response.ExpiresIn - 60 : response.ExpiresIn;
+                _cache.Set(CacheKey, response.AccessToken, TimeSpan.FromSeconds(expiresIn));
+
+                return response.AccessToken;
             }
-
-            var expiresIn = response.ExpiresIn > 60 ? response.ExpiresIn - 60 : response.ExpiresIn;
-            _cache.Set(CacheKey, response.AccessToken, TimeSpan.FromSeconds(expiresIn));
-
-            return response.AccessToken;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception during token acquisition for dynadapter");
+                return string.Empty;
+            }
         }
     }
 }
