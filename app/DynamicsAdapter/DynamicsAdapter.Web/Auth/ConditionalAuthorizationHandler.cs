@@ -28,7 +28,7 @@ namespace DynamicsAdapter.Web.Auth
 
             if (!authEnabled)
             {
-                Log.Debug("Authentication is disabled via feature flag. Allowing unauthenticated access.");
+                Log.Debug("JWT Authentication is disabled via feature flag. Falling back to API key authentication.");
                 context.Succeed(requirement);
                 return Task.CompletedTask;
             }

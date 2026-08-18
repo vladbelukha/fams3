@@ -356,6 +356,14 @@ namespace DynamicsAdapter.Web
 
             app.UseRouting();
 
+            var jwtEnabled = Configuration.GetValue<bool>("auth:jwt:enabled", defaultValue: true);
+            if (!jwtEnabled)
+            {
+                app.UseWhen(
+                    context => !context.Request.Path.StartsWithSegments("/swagger"),
+                    appBuilder => appBuilder.UseMiddleware<ApiKeyMiddleware>("ApiKey"));
+            }
+
             app.UseAuthentication();
             app.UseAuthorization();
 
