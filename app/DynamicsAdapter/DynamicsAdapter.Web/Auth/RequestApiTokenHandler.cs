@@ -12,7 +12,8 @@ namespace DynamicsAdapter.Web.Auth
 {
     /// <summary>
     /// HTTP message handler for outbound requests to request-api.
-    /// Toggles between JWT bearer token (when enabled) and X-ApiKey header (when disabled).
+    /// Attaches a JWT bearer token when <c>auth:requestApi:enabled</c> is true.
+    /// When disabled, requests are forwarded unauthenticated — request-api does not enforce API key auth.
     /// </summary>
     public class RequestApiTokenHandler : DelegatingHandler
     {
@@ -52,12 +53,7 @@ namespace DynamicsAdapter.Web.Auth
             }
             else
             {
-                var apiKey = _configuration["ApiKeyForRequestApi"];
-                if (!string.IsNullOrEmpty(apiKey))
-                {
-                    request.Headers.Add("X-ApiKey", apiKey);
-                    _logger.LogDebug("Request sent with X-ApiKey header (JWT disabled)");
-                }
+                _logger.LogDebug("JWT disabled for request-api; forwarding request without auth header");
             }
 
             return await base.SendAsync(request, cancellationToken);
