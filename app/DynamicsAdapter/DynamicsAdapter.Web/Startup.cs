@@ -11,6 +11,9 @@ using DynamicsAdapter.Web.Register;
 using DynamicsAdapter.Web.SearchAgency;
 using DynamicsAdapter.Web.SearchAgency.Models;
 using DynamicsAdapter.Web.SearchAgency.Validation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.IdentityModel.Tokens;
 using DynamicsAdapter.Web.SearchAgency.Webhook;
 using DynamicsAdapter.Web.SearchRequest;
 using Fams3Adapter.Dynamics.DataProvider;
@@ -43,6 +46,7 @@ using Simple.OData.Client;
 using StackExchange.Redis.Extensions.Core.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace DynamicsAdapter.Web
 {
@@ -70,7 +74,11 @@ namespace DynamicsAdapter.Web
 
             services.AddOptions<AgencyNotificationOptions>().Bind(Configuration.GetSection(Keys.AGENCY_NOTIFICATION_WEB_HOOK_SETTING_KEY));
             services.AddOptions<SearchApiConfiguration>().Bind(Configuration.GetSection("SearchApi"));
-            services.AddHttpClient<IAgencyNotificationWebhook<SearchRequestNotification>, AgencyNotificationWebhook>();
+            services.AddMemoryCache();
+            services.AddTransient<RequestApiTokenHandler>();
+            services.AddHttpClient("request_api_token");
+            services.AddHttpClient<IAgencyNotificationWebhook<SearchRequestNotification>, AgencyNotificationWebhook>()
+                .AddHttpMessageHandler<RequestApiTokenHandler>();
 
             services.AddHealthChecks().AddCheck<DynamicsHealthCheck>("status_reason_health_check", failureStatus: HealthStatus.Degraded);
 
@@ -81,6 +89,7 @@ namespace DynamicsAdapter.Web
             this.ConfigureDynamicsClient(services);
 
             this.ConfigureScheduler(services);
+            this.ConfigureJwtAuthentication(services);
             this.ConfigureAutoMapper(services);
             this.ConfigureFluentValidation(services);
             services.AddCacheService(Configuration.GetSection(Keys.REDIS_SECTION_SETTING_KEY).Get<RedisConfiguration>());
@@ -89,6 +98,50 @@ namespace DynamicsAdapter.Web
             services.AddTransient<ISearchResultService, SearchResultService>();
             services.AddTransient<ISearchRequestRegister, SearchRequestRegister>();
 
+        }
+
+        /// <summary>
+        /// Configures Keycloak JWT bearer authentication and a flag-gated authorization policy.
+        /// Set <c>auth:jwt:enabled = true</c> in configuration to enforce JWT on all protected routes.
+        /// </summary>
+        private void ConfigureJwtAuthentication(IServiceCollection services)
+        {
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.Authority = Configuration["auth:jwt:authority"];
+                    options.Audience = Configuration["auth:jwt:audience"];
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                    };
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = context =>
+                        {
+                            var sub = context.Principal?.FindFirst("sub")?.Value ?? "unknown";
+                            Serilog.Log.Information("JWT token validated for subject {Subject}", sub);
+                            return Task.CompletedTask;
+                        },
+                        OnAuthenticationFailed = context =>
+                        {
+                            Serilog.Log.Warning("JWT authentication failed: {Error}", context.Exception.Message);
+                            return Task.CompletedTask;
+                        }
+                    };
+                });
+
+            services.AddSingleton<IAuthorizationHandler, ConditionalAuthorizationHandler>();
+
+            services.AddAuthorization(options =>
+            {
+                var conditionalPolicy = new AuthorizationPolicyBuilder()
+                    .AddRequirements(new ConditionalAuthorizationRequirement())
+                    .Build();
+
+                options.DefaultPolicy = conditionalPolicy;
+                options.FallbackPolicy = conditionalPolicy;
+            });
         }
 
         private void ConfigureFluentValidation(IServiceCollection services)
@@ -303,11 +356,16 @@ namespace DynamicsAdapter.Web
 
             app.UseRouting();
 
-            app.UseAuthorization();
+            var jwtEnabled = Configuration.GetValue<bool>("auth:jwt:enabled", defaultValue: true);
+            if (!jwtEnabled)
+            {
+                app.UseWhen(
+                    context => !context.Request.Path.StartsWithSegments("/swagger"),
+                    appBuilder => appBuilder.UseMiddleware<ApiKeyMiddleware>("ApiKey"));
+            }
 
-            app.UseWhen(
-                context => !context.Request.Path.StartsWithSegments("/swagger"),
-                appBuilder => appBuilder.UseMiddleware<ApiKeyMiddleware>("ApiKey"));
+            app.UseAuthentication();
+            app.UseAuthorization();
 
             app.UseOpenApi();
 
@@ -319,7 +377,7 @@ namespace DynamicsAdapter.Web
                     AllowCachingResponses = false,
                     Predicate = _ => true,
                     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                });
+                }).AllowAnonymous();
                 endpoints.MapDefaultControllerRoute();
             });
         }

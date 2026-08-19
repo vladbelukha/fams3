@@ -6,6 +6,8 @@ using FluentValidation;
 using Jaeger;
 using Jaeger.Samplers;
 using MassTransit;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -13,18 +15,22 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using NSwag;
 using HealthChecks.UI.Client;
 using OpenTracing;
 using OpenTracing.Util;
 using SearchRequest.Adaptor.Notifier.Models;
 using SearchRequest.Adaptor.Notifier.Models.Validation;
+using SearchRequestAdaptor.Auth;
 using SearchRequestAdaptor.Configuration;
 using SearchRequestAdaptor.Consumer;
 using SearchRequestAdaptor.Notifier;
 using SearchRequestAdaptor.Publisher;
+using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Net.Http.Headers;
 using GreenPipes;
@@ -60,6 +66,7 @@ namespace SearchRequestAdaptor
             this.ConfigureServiceBus(services);
             ConfigureOpenApi(services);
             ConfigureOpenTracing(services);
+            ConfigureAuthentication(services);
 
 
         }
@@ -112,6 +119,8 @@ namespace SearchRequestAdaptor
                 await next();
             });
             app.UseRouting();
+            app.UseAuthentication();
+            app.UseAuthorization();
             app.UseOpenApi();
             app.UseEndpoints(endpoints =>
             {
@@ -123,6 +132,47 @@ namespace SearchRequestAdaptor
                     ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
                 });
                 endpoints.MapControllers();
+            });
+        }
+
+        private void ConfigureAuthentication(IServiceCollection services)
+        {
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.Authority = Configuration["auth:jwt:authority"];
+                    options.Audience = Configuration["auth:jwt:audience"];
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                    };
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnTokenValidated = context =>
+                        {
+                            var sub = context.Principal?.FindFirst("sub")?.Value ?? "unknown";
+                            Log.Information("JWT token validated for subject {Subject}", sub);
+                            return Task.CompletedTask;
+                        },
+                        OnAuthenticationFailed = context =>
+                        {
+                            Log.Warning("JWT authentication failed: {Error}", context.Exception.Message);
+                            return Task.CompletedTask;
+                        }
+                    };
+                    options.Validate();
+                });
+
+            services.AddSingleton<IAuthorizationHandler, ConditionalAuthorizationHandler>();
+
+            services.AddAuthorization(options =>
+            {
+                var conditionalPolicy = new AuthorizationPolicyBuilder()
+                    .AddRequirements(new ConditionalAuthorizationRequirement())
+                    .Build();
+
+                options.DefaultPolicy = conditionalPolicy;
+                options.FallbackPolicy = conditionalPolicy;
             });
         }
 

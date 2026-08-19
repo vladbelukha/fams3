@@ -1,4 +1,5 @@
 ﻿using BcGov.Fams3.SearchApi.Contracts.SearchRequest;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,7 @@ namespace SearchRequest.Adaptor.Notifier
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class NotificationController : ControllerBase
     {
         private readonly ILogger<NotificationController> _logger;

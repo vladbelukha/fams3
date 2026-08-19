@@ -19,7 +19,7 @@ namespace SearchRequestAdaptor.Notifier
 {
     public interface ISearchRequestNotifier<T>
     {
-        Task NotifySearchRequestEventAsync(string requestId, T searchRequestEvent, CancellationToken cancellationToken, int retryTimes=0, int maxRetryTimes=0);
+        Task NotifySearchRequestEventAsync(string requestId, T searchRequestEvent, CancellationToken cancellationToken, int retryTimes = 0, int maxRetryTimes = 0);
     }
 
     public class WebHookSearchRequestNotifier : ISearchRequestNotifier<SearchRequestEvent>
@@ -41,9 +41,9 @@ namespace SearchRequestAdaptor.Notifier
         }
 
         public async Task NotifySearchRequestEventAsync(string requestId, SearchRequestEvent searchRequestEvent,
-           CancellationToken cancellationToken, int retryTimes=0, int maxRetryTimes=0)
+           CancellationToken cancellationToken, int retryTimes = 0, int maxRetryTimes = 0)
         {
-            if(searchRequestEvent is SearchRequestOrdered)
+            if (searchRequestEvent is SearchRequestOrdered)
             {
                 await NotifySearchRequestOrderedEvent(requestId, (SearchRequestOrdered)searchRequestEvent, cancellationToken, retryTimes, maxRetryTimes);
             }
@@ -55,7 +55,7 @@ namespace SearchRequestAdaptor.Notifier
         }
 
         private async Task NotifySearchRequestOrderedEvent(
-            string requestId, 
+            string requestId,
             SearchRequestOrdered searchRequestOrdered,
             CancellationToken cancellationToken,
             int retryTimes,
@@ -101,13 +101,11 @@ namespace SearchRequestAdaptor.Notifier
                         System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/json");
                     request.Headers.Accept.Add(
                         System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
-                    request.Headers.Add("X-ApiKey", _searchRequestOptions.ApiKeyForDynadaptor);
-
                     var response = await _httpClient.SendAsync(request, cancellationToken);
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        if (response.StatusCode == System.Net.HttpStatusCode.InternalServerError || response.StatusCode==System.Net.HttpStatusCode.GatewayTimeout)
+                        if (response.StatusCode == System.Net.HttpStatusCode.InternalServerError || response.StatusCode == System.Net.HttpStatusCode.GatewayTimeout)
                         {
                             string reason = await response.Content.ReadAsStringAsync();
                             _logger.LogError(
@@ -140,7 +138,7 @@ namespace SearchRequestAdaptor.Notifier
 
                     //for the new action, we changed from Dynamics push the notification to here, openshift publish notification once sr is created.
                     //for the update action, fmep needs notified and notification from dynamics.
-                    if(saved.Action == RequestAction.NEW) 
+                    if (saved.Action == RequestAction.NEW)
                     {
                         _logger.LogInformation("create sr get success, publish accepted notification");
                         var notifyEvent = new SearchRequestNotificationEvent
@@ -148,7 +146,7 @@ namespace SearchRequestAdaptor.Notifier
                             ProviderProfile = saved.ProviderProfile,
                             NotificationType = NotificationType.RequestSaved,
                             RequestId = saved.RequestId,
-                            SearchRequestKey = saved.SearchRequestKey, 
+                            SearchRequestKey = saved.SearchRequestKey,
                             QueuePosition = saved.QueuePosition,
                             Message = $"Activity RequestSaved occured. ",
                             TimeStamp = DateTime.Now,
@@ -160,7 +158,7 @@ namespace SearchRequestAdaptor.Notifier
                     }
 
                     if (saved.Action == RequestAction.UPDATE)
-                    {                       
+                    {
                         _logger.LogInformation($"publish SearchRequestSaved");
                         await _searchRequestEventPublisher.PublishSearchRequestSaved(saved);
                         _logger.LogInformation("update sr get success, publish accepted notification");
@@ -237,7 +235,6 @@ namespace SearchRequestAdaptor.Notifier
                         System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/json");
                     request.Headers.Accept.Add(
                         System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
-                    request.Headers.Add("X-ApiKey", _searchRequestOptions.ApiKeyForDynadaptor);
                     request.Content = content;
 
                     _logger.LogDebug("Posting notification to webhook: {Endpoint}", endpoint);
@@ -259,7 +256,7 @@ namespace SearchRequestAdaptor.Notifier
                             response.StatusCode,
                             errorBody);
 
-                        if (response.StatusCode != System.Net.HttpStatusCode.InternalServerError 
+                        if (response.StatusCode != System.Net.HttpStatusCode.InternalServerError
                             && response.StatusCode != System.Net.HttpStatusCode.BadRequest)
                         {
                             throw new Exception($"Message Failed {response.StatusCode}, {errorBody}");

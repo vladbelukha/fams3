@@ -1,5 +1,6 @@
 ﻿using BcGov.Fams3.SearchApi.Contracts.PersonSearch;
 using Microsoft.Extensions.DependencyInjection;
+using SearchApi.Web.Auth;
 
 namespace SearchApi.Web.Notifications
 {
@@ -7,8 +8,11 @@ namespace SearchApi.Web.Notifications
     {
         public static void AddWebHooks(this IServiceCollection services)
         {
-            
-            services.AddHttpClient<ISearchApiNotifier<PersonSearchAdapterEvent>, WebHookNotifierSearchEventStatus>();
+            services.AddMemoryCache();
+            services.AddTransient<DynadapterTokenHandler>();
+            services.AddHttpClient("dynadapter_token");
+            services.AddHttpClient<ISearchApiNotifier<PersonSearchAdapterEvent>, WebHookNotifierSearchEventStatus>()
+                .AddHttpMessageHandler<DynadapterTokenHandler>();
         }
     }
 }

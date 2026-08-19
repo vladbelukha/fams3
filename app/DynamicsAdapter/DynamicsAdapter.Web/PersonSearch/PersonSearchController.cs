@@ -10,6 +10,7 @@ using Fams3Adapter.Dynamics.SearchApiEvent;
 using Fams3Adapter.Dynamics.SearchApiRequest;
 using Fams3Adapter.Dynamics.SearchRequest;
 using Fams3Adapter.Dynamics.Types;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -26,6 +27,7 @@ namespace DynamicsAdapter.Web.PersonSearch
 {
     [Route("[controller]")]
     [ApiController]
+    [Authorize]
     public class PersonSearchController : ControllerBase
     {
         private readonly ILogger<PersonSearchController> _logger;
