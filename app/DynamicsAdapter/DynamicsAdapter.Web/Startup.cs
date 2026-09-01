@@ -93,8 +93,6 @@ namespace DynamicsAdapter.Web
             this.ConfigureAutoMapper(services);
             this.ConfigureFluentValidation(services);
             services.AddCacheService(Configuration.GetSection(Keys.REDIS_SECTION_SETTING_KEY).Get<RedisConfiguration>());
-          
-
             services.AddTransient<ISearchResultService, SearchResultService>();
             services.AddTransient<ISearchRequestRegister, SearchRequestRegister>();
 
@@ -184,7 +182,8 @@ namespace DynamicsAdapter.Web
             // Add OAuth Middleware
             services.AddTransient<OAuthHandler>();
 
-            // Add Api Gateway Middleware
+            // TODO: remove the legacy ApiGateway middleware after full cloud migration.
+            // The gateway rewrite was only needed for the legacy on-prem/proxy deployment path.
             services.AddTransient<ApiGatewayHandler>();
 
             // Register IOAuthApiClient - implementation selected by Dynamics:AuthenticationType
@@ -198,11 +197,13 @@ namespace DynamicsAdapter.Web
             }
 
             // Register httpClient for OdataClient with OAuthHandler
+            // TODO: remove the ApiGatewayHandler registration after full cloud migration.
             services.AddHttpClient<ODataClientSettings>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
                 .AddHttpMessageHandler<OAuthHandler>()
                 .AddHttpMessageHandler<ApiGatewayHandler>();
 
             // Register httpClient for StatusReason Service with OAuthHandler
+            // TODO: remove the ApiGatewayHandler registration after full cloud migration.
             services.AddHttpClient<IOptionSetService, OptionSetService>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
                 .AddHttpMessageHandler<OAuthHandler>()
                 .AddHttpMessageHandler<ApiGatewayHandler>();
