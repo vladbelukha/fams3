@@ -15,7 +15,7 @@ namespace DynamicsAdapter.Web.Test.ApiGateway
 {
     public class ApiGatewayHandlerTest
     {
-        
+
 
         public class WithApiGatewayUrlNoPathConfiguration
         {
@@ -106,6 +106,61 @@ namespace DynamicsAdapter.Web.Test.ApiGateway
         }
     }
 
+
+    public class WithCloudDynamicsAndApiGatewayConfigured
+    {
+
+        private ApiGatewayHandler _sut;
+        private Mock<IOptions<ApiGatewayOptions>> _apiGatewayOptionsMock;
+        private Mock<IOptions<DynamicsOptions>> _dynamicsOptionsMock;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _apiGatewayOptionsMock = new Mock<IOptions<ApiGatewayOptions>>();
+            _apiGatewayOptionsMock.Setup(x => x.Value).Returns(new ApiGatewayOptions()
+            {
+                BasePath = "https://wsgw.dev.jag.gov.bc.ca/fams3"
+            });
+
+            _dynamicsOptionsMock = new Mock<IOptions<DynamicsOptions>>();
+            _dynamicsOptionsMock.Setup(x => x.Value).Returns(new DynamicsOptions()
+            {
+                AuthenticationType = DynamicsOptions.Cloud,
+                EntraId = new EntraIdOptions
+                {
+                    DynamicsApiEndpointUrl = "https://jsb-fams-dev.crm3.dynamics.com",
+                    TenantId = "tenant",
+                    ClientId = "client",
+                    ClientSecret = "secret",
+                    ResourceName = "resource"
+                }
+            });
+
+            _sut = new ApiGatewayHandler(_apiGatewayOptionsMock.Object, _dynamicsOptionsMock.Object)
+            {
+                InnerHandler = new TestHandler()
+            };
+        }
+
+        public class TestHandler : DelegatingHandler
+        {
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+                CancellationToken cancellationToken)
+            {
+                Assert.AreEqual("https://jsb-fams-dev.crm3.dynamics.com/api/data/v9.2/$metadata", request.RequestUri.AbsoluteUri);
+                return await Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            }
+        }
+
+        [Test]
+        public async Task Execute()
+        {
+            var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://jsb-fams-dev.crm3.dynamics.com/api/data/v9.2/$metadata");
+            var invoker = new HttpMessageInvoker(_sut);
+            var result = await invoker.SendAsync(httpRequestMessage, new CancellationToken());
+        }
+    }
 
     public class WithApiGatewayNullConfiguration
     {
