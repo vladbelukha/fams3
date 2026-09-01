@@ -1,6 +1,5 @@
 version: "3.7"
 services:
-
   splunk:
     image: splunk/splunk:8.0.2.1
     environment:
@@ -107,7 +106,7 @@ services:
   dynadapter:
     build:
       context: app/DynamicsAdapter
-      args: 
+      args:
         PROJECT_NAME: DynamicsAdapter.Web
         NEXUS_REPO_URL: ${NEXUS_REPO_URL}
         NEXUS_REPO_USER: ${NEXUS_REPO_USER}
@@ -123,12 +122,19 @@ services:
       SCHEDULER_FAILED: 0 30 11 * * ? *
       SEARCHAPI__BASEURL: http://search-api
       SEARCHAPI_AVAILABLEDATAPARTNER: ""
-      OAUTH__OAUTHURL: ${OAUTH__OAUTHURL}
-      OAUTH__RESOURCEURL: ${OAUTH__RESOURCEURL}
-      OAUTH__CLIENTID: ${OAUTH__CLIENTID}
-      OAUTH__SECRET: ${OAUTH__SECRET}
-      OAUTH__USERNAME: ${OAUTH__USERNAME}
-      OAUTH__PASSWORD: ${OAUTH__PASSWORD}
+      DYNAMICS__AUTHENTICATIONTYPE: ${DYNAMICS__AUTHENTICATIONTYPE:-OnPremise}
+      DYNAMICS__ADFS__DYNAMICSAPIENDPOINTURL: ${OAUTH__RESOURCEURL}
+      DYNAMICS__ADFS__OAUTH2TOKENENDPOINT: ${OAUTH__OAUTHURL}
+      DYNAMICS__ADFS__CLIENTID: ${OAUTH__CLIENTID}
+      DYNAMICS__ADFS__CLIENTSECRET: ${OAUTH__SECRET}
+      DYNAMICS__ADFS__SERVICEACCOUNTNAME: ${OAUTH__USERNAME}
+      DYNAMICS__ADFS__SERVICEACCOUNTPASSWORD: ${OAUTH__PASSWORD}
+      DYNAMICS__ADFS__RESOURCENAME: ${OAUTH__RESOURCEURL}
+      DYNAMICS__ENTRAID__DYNAMICSAPIENDPOINTURL: ${DYNAMICS__ENTRAID__DYNAMICSAPIENDPOINTURL}
+      DYNAMICS__ENTRAID__TENANTID: ${DYNAMICS__ENTRAID__TENANTID}
+      DYNAMICS__ENTRAID__CLIENTID: ${DYNAMICS__ENTRAID__CLIENTID}
+      DYNAMICS__ENTRAID__CLIENTSECRET: ${DYNAMICS__ENTRAID__CLIENTSECRET}
+      DYNAMICS__ENTRAID__RESOURCENAME: ${DYNAMICS__ENTRAID__RESOURCENAME}
       APIGATEWAY__BASEPATH: ${APIGATEWAY__BASEPATH}
       SPLUNK_COLLECTOR_URL: https://splunk:8088
       SPLUNK_TOKEN: ${SPLUNK_TOKEN}
@@ -146,7 +152,7 @@ services:
   request-api:
     build:
       context: app/SearchApi
-      args: 
+      args:
         PROJECT_NAME: SearchRequest.Adaptor
         NEXUS_REPO_URL: ${NEXUS_REPO_URL}
         NEXUS_REPO_USER: ${NEXUS_REPO_USER}
@@ -252,7 +258,7 @@ services:
       - "6379:6379"
     networks:
       - search-api-net
-    environment: 
+    environment:
       - REDIS_PASSWORD="${REDIS__PASSWORD}"
     volumes:
       - data-redis:/data
@@ -264,7 +270,7 @@ services:
     image: rediscommander/redis-commander
     restart: always
     depends_on: [redis]
-    networks: 
+    networks:
       - search-api-net
     ports:
       - "8081:8081"

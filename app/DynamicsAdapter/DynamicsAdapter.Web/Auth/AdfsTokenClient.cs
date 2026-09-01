@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using DynamicsAdapter.Web.Configuration;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
@@ -16,42 +17,46 @@ namespace DynamicsAdapter.Web.Auth
     }
 
     /// <summary>
-    /// The OAuthApiClient interact with OAuth endpoing to manage refresh tokens.
+    /// The AdfsTokenClient interacts with the on-premise ADFS OAuth2 endpoint (resource owner
+    /// password credentials grant) to obtain and refresh access tokens for Dynamics On-Premise.
     /// </summary>
-    public class OAuthApiClient : IOAuthApiClient
+    public class AdfsTokenClient : IOAuthApiClient
     {
         private readonly HttpClient _httpClient;
 
-        private readonly OAuthOptions _oAuthOptions;
+        private readonly AdfsOptions _adfsOptions;
 
-        public OAuthApiClient(HttpClient httpClient, IOptionsMonitor<OAuthOptions> oAuthOptions)
+        public AdfsTokenClient(HttpClient httpClient, IOptionsMonitor<DynamicsOptions> dynamicsOptions)
         {
             this._httpClient = httpClient;
-            this._oAuthOptions = oAuthOptions.CurrentValue;
+            this._adfsOptions = dynamicsOptions.CurrentValue.ADFS;
         }
 
         public async Task<Token> GetRefreshToken(CancellationToken cancellationToken)
         {
-            if (_httpClient.DefaultRequestHeaders.Contains("client-request-id")){
+            if (_httpClient.DefaultRequestHeaders.Contains("client-request-id"))
+            {
                 _httpClient.DefaultRequestHeaders.Remove("client-request-id");
             }
             _httpClient.DefaultRequestHeaders.Add("client-request-id", Guid.NewGuid().ToString());
-            if (_httpClient.DefaultRequestHeaders.Contains("return-client-request-id")){
+            if (_httpClient.DefaultRequestHeaders.Contains("return-client-request-id"))
+            {
                 _httpClient.DefaultRequestHeaders.Remove("return-client-request-id");
             }
             _httpClient.DefaultRequestHeaders.Add("return-client-request-id", "true");
-            if (_httpClient.DefaultRequestHeaders.Contains("Accept")){
+            if (_httpClient.DefaultRequestHeaders.Contains("Accept"))
+            {
                 _httpClient.DefaultRequestHeaders.Remove("Accept");
             }
             _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
             var data = new Dictionary<string, string>
             {
-                {"resource", _oAuthOptions.ResourceUrl},
-                {"client_id", _oAuthOptions.ClientId},
-                {"client_secret", _oAuthOptions.Secret},
-                {"username", _oAuthOptions.Username},
-                {"password", _oAuthOptions.Password},
+                {"resource", _adfsOptions.ResourceName},
+                {"client_id", _adfsOptions.ClientId},
+                {"client_secret", _adfsOptions.ClientSecret},
+                {"username", _adfsOptions.ServiceAccountName},
+                {"password", _adfsOptions.ServiceAccountPassword},
                 {"scope", "openid"},
                 {"response_mode", "form_post"},
                 {"grant_type", "password"}
@@ -59,7 +64,7 @@ namespace DynamicsAdapter.Web.Auth
 
             var content = new FormUrlEncodedContent(data);
 
-            using (var request = new HttpRequestMessage(HttpMethod.Post, _oAuthOptions.OAuthUrl) {Content = content})
+            using (var request = new HttpRequestMessage(HttpMethod.Post, _adfsOptions.OAuth2TokenEndpoint) { Content = content })
             {
                 var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
                     cancellationToken);
@@ -70,8 +75,8 @@ namespace DynamicsAdapter.Web.Auth
                         ? null
                         : await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     throw new OAuthApiException(
-                        "The HTTP status code of the response was not expected (" + (int) response.StatusCode + ").",
-                        (int) response.StatusCode, responseData,
+                        "The HTTP status code of the response was not expected (" + (int)response.StatusCode + ").",
+                        (int)response.StatusCode, responseData,
                         response.Headers.ToDictionary(x => x.Key, x => x.Value), null);
                 }
 

@@ -169,17 +169,17 @@ namespace DynamicsAdapter.Web
             // Adding distributed cache
             services.AddDistributedMemoryCache();
 
-            // Bind OAuth Configuration
-            services.AddOptions<OAuthOptions>()
-                .Bind(Configuration.GetSection("OAuth"))
+            // Bind Dynamics Configuration (selects ADFS on-premise or EntraId cloud below)
+            services.AddOptions<DynamicsOptions>()
+                .Bind(Configuration.GetSection(Keys.DYNAMICS_CONFIGURATION_KEY))
                 .ValidateDataAnnotations();
 
             services.AddOptions<ApiGatewayOptions>()
                 .Bind(Configuration.GetSection(Keys.API_GATEWAY_CONFIGURATION_KEY))
                 .ValidateDataAnnotations();
 
-            var oAuthOptions = Configuration.GetSection("OAuth").Get<OAuthOptions>();
-
+            var dynamicsOptions = Configuration.GetSection(Keys.DYNAMICS_CONFIGURATION_KEY).Get<DynamicsOptions>();
+            ValidateDynamicsOptions(dynamicsOptions);
 
             // Add OAuth Middleware
             services.AddTransient<OAuthHandler>();
@@ -187,18 +187,23 @@ namespace DynamicsAdapter.Web
             // Add Api Gateway Middleware
             services.AddTransient<ApiGatewayHandler>();
 
-            // Register IOAuthApiClient
-            services.AddHttpClient<IOAuthApiClient, OAuthApiClient>();
-
-
+            // Register IOAuthApiClient - implementation selected by Dynamics:AuthenticationType
+            if (dynamicsOptions.IsCloud)
+            {
+                services.AddHttpClient<IOAuthApiClient, EntraIdTokenClient>();
+            }
+            else
+            {
+                services.AddHttpClient<IOAuthApiClient, AdfsTokenClient>();
+            }
 
             // Register httpClient for OdataClient with OAuthHandler
-            services.AddHttpClient<ODataClientSettings>(cfg => { cfg.BaseAddress = new Uri(oAuthOptions.ResourceUrl); })
+            services.AddHttpClient<ODataClientSettings>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
                 .AddHttpMessageHandler<OAuthHandler>()
                 .AddHttpMessageHandler<ApiGatewayHandler>();
 
             // Register httpClient for StatusReason Service with OAuthHandler
-            services.AddHttpClient<IOptionSetService, OptionSetService>(cfg => { cfg.BaseAddress = new Uri(oAuthOptions.ResourceUrl); })
+            services.AddHttpClient<IOptionSetService, OptionSetService>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
                 .AddHttpMessageHandler<OAuthHandler>()
                 .AddHttpMessageHandler<ApiGatewayHandler>();
 
@@ -206,10 +211,10 @@ namespace DynamicsAdapter.Web
             //services.AddTransient<IODataClient>(provider =>
             services.AddSingleton<IODataClient>(provider =>
             {
-                 var settings = provider.GetRequiredService<ODataClientSettings>();
-                 settings.IgnoreUnmappedProperties = true;
-                 return new ODataClient(settings);
-             });
+                var settings = provider.GetRequiredService<ODataClientSettings>();
+                settings.IgnoreUnmappedProperties = true;
+                return new ODataClient(settings);
+            });
 
             // Add other Services
             services.AddTransient<ITokenService, TokenService>();
@@ -221,6 +226,22 @@ namespace DynamicsAdapter.Web
             services.AddTransient<IAgencyRequestService, AgencyRequestService>();
             services.AddTransient<IAgencyResponseService, AgencyResponseService>();
         }
+        /// <summary>
+        /// Ensures the configuration section matching the selected <see cref="DynamicsOptions.AuthenticationType"/>
+        /// is present, since only ADFS (OnPremise) or EntraId (Cloud) is required at any one time.
+        /// </summary>
+        private static void ValidateDynamicsOptions(DynamicsOptions options)
+        {
+            if (options == null)
+                throw new InvalidOperationException("The 'Dynamics' configuration section is missing.");
+
+            if (options.IsCloud && options.EntraId == null)
+                throw new InvalidOperationException("'Dynamics:EntraId' configuration is required when Dynamics:AuthenticationType is 'Cloud'.");
+
+            if (!options.IsCloud && options.ADFS == null)
+                throw new InvalidOperationException("'Dynamics:ADFS' configuration is required when Dynamics:AuthenticationType is 'OnPremise'.");
+        }
+
         /// <summary>
         /// Configures the Quartz Hosted Service.
         /// </summary>
