@@ -182,9 +182,12 @@ namespace DynamicsAdapter.Web
             // Add OAuth Middleware
             services.AddTransient<OAuthHandler>();
 
-            // TODO: remove the legacy ApiGateway middleware after full cloud migration.
-            // The gateway rewrite was only needed for the legacy on-prem/proxy deployment path.
-            services.AddTransient<ApiGatewayHandler>();
+            // The legacy API gateway rewrite is only required for OnPremise infrastructure.
+            // Cloud mode must bypass it completely to avoid routing requests through the legacy gateway.
+            if (!dynamicsOptions.IsCloud)
+            {
+                services.AddTransient<ApiGatewayHandler>();
+            }
 
             // Register IOAuthApiClient - implementation selected by Dynamics:AuthenticationType
             if (dynamicsOptions.IsCloud)
@@ -197,16 +200,30 @@ namespace DynamicsAdapter.Web
             }
 
             // Register httpClient for OdataClient with OAuthHandler
-            // TODO: remove the ApiGatewayHandler registration after full cloud migration.
-            services.AddHttpClient<ODataClientSettings>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
-                .AddHttpMessageHandler<OAuthHandler>()
-                .AddHttpMessageHandler<ApiGatewayHandler>();
+            if (dynamicsOptions.IsCloud)
+            {
+                services.AddHttpClient<ODataClientSettings>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
+                    .AddHttpMessageHandler<OAuthHandler>();
+            }
+            else
+            {
+                services.AddHttpClient<ODataClientSettings>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
+                    .AddHttpMessageHandler<OAuthHandler>()
+                    .AddHttpMessageHandler<ApiGatewayHandler>();
+            }
 
             // Register httpClient for StatusReason Service with OAuthHandler
-            // TODO: remove the ApiGatewayHandler registration after full cloud migration.
-            services.AddHttpClient<IOptionSetService, OptionSetService>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
-                .AddHttpMessageHandler<OAuthHandler>()
-                .AddHttpMessageHandler<ApiGatewayHandler>();
+            if (dynamicsOptions.IsCloud)
+            {
+                services.AddHttpClient<IOptionSetService, OptionSetService>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
+                    .AddHttpMessageHandler<OAuthHandler>();
+            }
+            else
+            {
+                services.AddHttpClient<IOptionSetService, OptionSetService>(cfg => { cfg.BaseAddress = new Uri(dynamicsOptions.DynamicsApiEndpointUrl); })
+                    .AddHttpMessageHandler<OAuthHandler>()
+                    .AddHttpMessageHandler<ApiGatewayHandler>();
+            }
 
             // Register Odata client
             //services.AddTransient<IODataClient>(provider =>
